@@ -1,0 +1,21 @@
+{
+  "name": "omni-booking",
+  "version": "1.0.0",
+  "description": "High-Performance Channel Manager with PHP Laravel & C++ Hybrid Core and Neon PostgreSQL",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build:cpp": "g++ -O3 -std=c++14 bin/channel_engine.cpp -o bin/channel_engine.exe",
+    "serve:php": "php -S 127.0.0.1:8000 -t public public/index.php"
+  },
+  "keywords": [
+    "laravel",
+    "cpp",
+    "channel-manager",
+    "segment-tree",
+    "concurrency",
+    "ota-sync"
+  ],
+  "author": "Gaman",
+  "license": "MIT"
+}

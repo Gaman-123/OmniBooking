@@ -1,0 +1,87 @@
+#!/usr/bin/env php
+<?php
+
+require_once __DIR__ . '/vendor/autoload.php';
+require_once __DIR__ . '/database/seeders/DatabaseSeeder.php';
+
+use Dotenv\Dotenv;
+use App\Database\Connection;
+use App\Database\Migrator;
+use Database\Seeders\DatabaseSeeder;
+use App\Http\Controllers\BookingController;
+
+if (file_exists(__DIR__ . '/.env')) {
+    $dotenv = Dotenv::createImmutable(__DIR__);
+    $dotenv->safeLoad();
+}
+
+$command = $argv[1] ?? 'help';
+
+echo "\n======================================================\n";
+echo "  Omni Booking CLI - Hybrid Channel Manager Core\n";
+echo "======================================================\n\n";
+
+switch ($command) {
+    case 'migrate':
+        echo "[*] Running database migrations on " . Connection::getActiveDriver() . "...\n";
+        $migrator = new Migrator();
+        $logs = $migrator->migrate();
+        foreach ($logs as $log) {
+            echo "  -> {$log}\n";
+        }
+        echo "[✓] Migrations finished!\n\n";
+        break;
+
+    case 'migrate:reset':
+        echo "[!] Dropping all tables...\n";
+        $migrator = new Migrator();
+        $logs = $migrator->reset();
+        foreach ($logs as $log) {
+            echo "  -> {$log}\n";
+        }
+        echo "[✓] Database reset complete.\n\n";
+        break;
+
+    case 'db:seed':
+        echo "[*] Seeding database with realistic hotels, room types, 30-day matrix & channels...\n";
+        $seeder = new DatabaseSeeder();
+        $logs = $seeder->run();
+        foreach ($logs as $log) {
+            echo "  -> {$log}\n";
+        }
+        echo "[✓] Seeding completed successfully!\n\n";
+        break;
+
+    case 'db:status':
+        echo "[*] Database Connection Status:\n";
+        $status = Connection::getHealthStatus();
+        print_r($status);
+        echo "\n";
+        break;
+
+    case 'booking:simulate':
+        echo "[*] Simulating incoming OTA booking...\n";
+        $controller = new BookingController();
+        $res = $controller->simulate();
+        echo json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+        break;
+
+    case 'serve':
+        $host = '127.0.0.1';
+        $port = 8000;
+        echo "[*] Starting OmniBooking Development Server on http://{$host}:{$port}\n";
+        echo "    Press Ctrl+C to stop.\n\n";
+        passthru("php -S {$host}:{$port} -t public public/index.php");
+        break;
+
+    case 'help':
+    default:
+        echo "Available Commands:\n";
+        echo "  php artisan migrate          Run database migrations (Neon SQL / SQLite)\n";
+        echo "  php artisan migrate:reset    Drop all database tables\n";
+        echo "  php artisan db:seed          Seed sample hotels, room types, inventory & channels\n";
+        echo "  php artisan db:status        Test database connection and driver status\n";
+        echo "  php artisan booking:simulate Simulate an incoming OTA booking and DAG fan-out\n";
+        echo "  php artisan serve            Start the local HTTP development server\n\n";
+        break;
+}

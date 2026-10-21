@@ -1,0 +1,18 @@
+# Environment file
+.env
+.env.backup
+.env.production
+
+# Dependencies
+/vendor/
+node_modules/
+composer.phar
+
+# SQLite local databases and logs
+*.sqlite
+*.sqlite-journal
+*.log
+
+# System files
+.DS_Store
+Thumbs.db
