@@ -9,7 +9,7 @@ use Exception;
 class Connection
 {
     private static ?PDO $instance = null;
-    private static string $activeDriver = 'pgsql';
+    private static string $activeDriver = 'mysql';
     private static ?string $lastError = null;
 
     /**
@@ -24,46 +24,88 @@ class Connection
     }
 
     /**
-     * Establish the connection, prioritizing Neon PostgreSQL with automatic fallback
+     * Establish the connection, prioritizing MySQL with graceful fallback to Neon or SQLite
      */
     private static function connect(): void
     {
-        // 1. Try Neon PostgreSQL
-        $dbUrl = getenv('DATABASE_URL');
-        $host = getenv('DB_HOST') ?: '127.0.0.1';
-        $port = getenv('DB_PORT') ?: '5432';
-        $dbname = getenv('DB_DATABASE') ?: 'neondb';
-        $user = getenv('DB_USERNAME') ?: 'postgres';
-        $password = getenv('DB_PASSWORD') ?: '';
-        $sslmode = getenv('DB_SSLMODE') ?: 'require';
+        $preferredDriver = getenv('DB_CONNECTION') ?: 'mysql';
 
-        if (!empty($dbUrl)) {
-            $parsed = parse_url($dbUrl);
-            if ($parsed) {
-                $host = $parsed['host'] ?? $host;
-                $port = $parsed['port'] ?? $port;
-                $user = $parsed['user'] ?? $user;
-                $password = $parsed['pass'] ?? $password;
-                $dbname = ltrim($parsed['path'] ?? $dbname, '/');
-                if (isset($parsed['query'])) {
-                    parse_str($parsed['query'], $query);
-                    if (isset($query['sslmode'])) {
-                        $sslmode = $query['sslmode'];
+        // 1. Try MySQL Connection if preferred or configured
+        if ($preferredDriver === 'mysql') {
+            $host = getenv('DB_HOST') ?: '127.0.0.1';
+            $port = getenv('DB_PORT') ?: '3306';
+            $dbname = getenv('DB_DATABASE') ?: 'omni_booking';
+            $user = getenv('DB_USERNAME') ?: 'root';
+            $password = getenv('DB_PASSWORD') !== false ? getenv('DB_PASSWORD') : '';
+            $charset = getenv('DB_CHARSET') ?: 'utf8mb4';
+
+            try {
+                // First ensure database exists (or connect without db name first)
+                try {
+                    $dsn = "mysql:host={$host};port={$port};dbname={$dbname};charset={$charset}";
+                    $options = [
+                        PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                        PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                        PDO::ATTR_EMULATE_PREPARES => false,
+                        PDO::ATTR_TIMEOUT => 3,
+                    ];
+                    self::$instance = new PDO($dsn, $user, $password, $options);
+                } catch (PDOException $ex) {
+                    // If error is 1049 (Unknown database), try auto-creating database
+                    if ($ex->getCode() == 1049 || str_contains($ex->getMessage(), 'Unknown database')) {
+                        $serverDsn = "mysql:host={$host};port={$port};charset={$charset}";
+                        $serverPdo = new PDO($serverDsn, $user, $password, [
+                            PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                            PDO::ATTR_TIMEOUT => 3
+                        ]);
+                        $serverPdo->exec("CREATE DATABASE IF NOT EXISTS `{$dbname}` CHARACTER SET {$charset} COLLATE utf8mb4_unicode_ci;");
+                        self::$instance = new PDO($dsn, $user, $password, $options);
+                    } else {
+                        throw $ex;
                     }
                 }
+
+                self::$activeDriver = 'mysql';
+                self::$lastError = null;
+                return;
+            } catch (PDOException $e) {
+                self::$lastError = "MySQL connection warning: " . $e->getMessage();
             }
         }
 
-        // Only try pgsql if explicitly configured or host is not localhost with dummy values
-        $preferredDriver = getenv('DB_CONNECTION') ?: 'pgsql';
+        // 2. Try Neon PostgreSQL if configured or if pgsql was preferred
+        if ($preferredDriver === 'pgsql' || !empty(getenv('DATABASE_URL'))) {
+            $dbUrl = getenv('DATABASE_URL');
+            $host = getenv('DB_HOST') ?: (getenv('NEON_DB_HOST') ?: '127.0.0.1');
+            $port = getenv('DB_PORT') ?: (getenv('NEON_DB_PORT') ?: '5432');
+            $dbname = getenv('DB_DATABASE') ?: (getenv('NEON_DB_DATABASE') ?: 'neondb');
+            $user = getenv('DB_USERNAME') ?: (getenv('NEON_DB_USERNAME') ?: 'postgres');
+            $password = getenv('DB_PASSWORD') ?: (getenv('NEON_DB_PASSWORD') ?: '');
+            $sslmode = getenv('DB_SSLMODE') ?: 'require';
 
-        if ($preferredDriver === 'pgsql') {
+            if (!empty($dbUrl)) {
+                $parsed = parse_url($dbUrl);
+                if ($parsed) {
+                    $host = $parsed['host'] ?? $host;
+                    $port = $parsed['port'] ?? $port;
+                    $user = $parsed['user'] ?? $user;
+                    $password = $parsed['pass'] ?? $password;
+                    $dbname = ltrim($parsed['path'] ?? $dbname, '/');
+                    if (isset($parsed['query'])) {
+                        parse_str($parsed['query'], $query);
+                        if (isset($query['sslmode'])) {
+                            $sslmode = $query['sslmode'];
+                        }
+                    }
+                }
+            }
+
             try {
                 $dsn = "pgsql:host={$host};port={$port};dbname={$dbname};sslmode={$sslmode}";
                 $options = [
                     PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                     PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                    PDO::ATTR_TIMEOUT => 5, // 5s timeout to not hang if Neon network changes
+                    PDO::ATTR_TIMEOUT => 4,
                 ];
 
                 self::$instance = new PDO($dsn, $user, $password, $options);
@@ -71,11 +113,11 @@ class Connection
                 self::$lastError = null;
                 return;
             } catch (PDOException $e) {
-                self::$lastError = "Neon PostgreSQL connection warning: " . $e->getMessage();
+                self::$lastError = (self::$lastError ? self::$lastError . " | " : "") . "Neon PostgreSQL connection warning: " . $e->getMessage();
             }
         }
 
-        // 2. Fallback to SQLite for instant local development / offline readiness
+        // 3. Resilient Fallback to SQLite (Instant zero-downtime sandbox)
         try {
             $sqlitePath = getenv('DB_SQLITE_PATH') ?: __DIR__ . '/../../database/database.sqlite';
             $dir = dirname($sqlitePath);
@@ -93,12 +135,12 @@ class Connection
             self::$instance->exec("PRAGMA foreign_keys = ON;");
             self::$activeDriver = 'sqlite';
         } catch (PDOException $e) {
-            throw new Exception("Database connection failure on both Neon PostgreSQL and SQLite: " . $e->getMessage());
+            throw new Exception("Database connection failure across all drivers (MySQL, PostgreSQL, SQLite): " . $e->getMessage());
         }
     }
 
     /**
-     * Get active driver ('pgsql' for Neon or 'sqlite' for fallback)
+     * Get active driver ('mysql', 'pgsql', or 'sqlite')
      */
     public static function getActiveDriver(): string
     {
@@ -118,14 +160,20 @@ class Connection
             $driver = self::getActiveDriver();
             $version = $pdo->getAttribute(PDO::ATTR_SERVER_VERSION);
 
+            $targetLabel = match($driver) {
+                'mysql' => 'MySQL Database Engine (InnoDB)',
+                'pgsql' => 'Neon SQL (Serverless PostgreSQL)',
+                default => 'SQLite (Local Sandbox Fallback)'
+            };
+
             return [
                 'status' => 'connected',
                 'driver' => $driver,
-                'target' => $driver === 'pgsql' ? 'Neon SQL (Serverless PostgreSQL)' : 'SQLite (Local Sandbox Fallback)',
+                'target' => $targetLabel,
                 'server_version' => $version,
                 'notice' => self::$lastError,
                 'host' => getenv('DB_HOST') ?: '127.0.0.1',
-                'database' => getenv('DB_DATABASE') ?: 'neondb',
+                'database' => getenv('DB_DATABASE') ?: 'omni_booking',
             ];
         } catch (Exception $e) {
             return [
