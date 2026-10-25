@@ -16,15 +16,16 @@
                                    ▼
 ┌──────────────────────────────────────────────────────────────────────┐
 │              PHP Backend  (public/index.php → Router)                │
-│   /api/health · /api/inventory-matrix · /api/bookings · etc.        │
+│  /api/users · /api/health · /api/inventory-matrix · /api/bookings   │
 └──────────────────┬───────────────────────────────┬───────────────────┘
                    │                               │
                    ▼                               ▼
        ┌───────────────────┐         ┌─────────────────────────────┐
        │  MySQL (InnoDB)   │         │  C++ Algorithmic Engine      │
        │  omni_booking db  │         │  bin/channel_engine.exe      │
-       │  6 tables · ACID  │         │  DAG · Pricing · Parity      │
-       └───────────────────┘         └─────────────────────────────┘
+       │  7 tables · ACID  │         │  DAG · Pricing · Parity      │
+       │  + users table    │         └─────────────────────────────┘
+       └───────────────────┘
 ```
 
 ---
@@ -98,6 +99,12 @@ const BASE_URL = '';  // Same-origin API (served by PHP backend)
 |---|---|---|---|
 | Page Load | `GET` | `/api/health` | Database status badge |
 | Page Load | `GET` | `/api/inventory-matrix?days=7` | Render availability matrix |
+| Page Load | `GET` | `/api/users` | Load registered users list |
+| Form Submit | `POST` | `/api/users` | Register / create new user |
+| Form Submit | `POST` | `/api/users/login` | Login with email + password |
+| Link/Button | `GET` | `/api/users/{id}/bookings` | Load bookings for a user |
+| Button | `PUT` | `/api/users/{id}` | Update user profile |
+| Button | `DELETE` | `/api/users/{id}` | Deactivate a user |
 | Button | `POST` | `/api/simulate-booking` | OTA reservation + DAG fan-out |
 | Button | `POST` | `/api/run-ai-pricing` | PHP yield pricing compute |
 | Button | `POST` | `/api/cpp/benchmark` | C++ 1M+ ops/sec benchmark |
@@ -107,7 +114,7 @@ const BASE_URL = '';  // Same-origin API (served by PHP backend)
 | Auto-refresh | `GET` | `/api/sync-logs` | Live webhook telemetry |
 | Auto-refresh | `GET` | `/api/bookings` | Recent reservations feed |
 
-### AJAX Call Pattern
+### AJAX Call Pattern — Booking Simulation
 
 ```js
 $.ajax({
@@ -121,6 +128,54 @@ $.ajax({
     },
     error: function() {
         showToast('❌ API error. Is the backend server running?', 'error');
+    }
+});
+```
+
+### AJAX Call Pattern — Create User
+
+```js
+$.ajax({
+    url: '/api/users',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({
+        name:     $('#user-name').val(),
+        email:    $('#user-email').val(),
+        password: $('#user-password').val(),
+        phone:    $('#user-phone').val(),
+        role:     'guest'
+    }),
+    success: function(response) {
+        showToast('✅ User created: ' + response.user.name, 'success');
+        loadUsers(); // Refresh user list
+    },
+    error: function(xhr) {
+        var msg = xhr.responseJSON?.errors?.join(', ') || 'Failed to create user';
+        showToast('❌ ' + msg, 'error');
+    }
+});
+```
+
+### AJAX Call Pattern — Login
+
+```js
+$.ajax({
+    url: '/api/users/login',
+    method: 'POST',
+    contentType: 'application/json',
+    data: JSON.stringify({
+        email:    $('#login-email').val(),
+        password: $('#login-password').val()
+    }),
+    success: function(response) {
+        // Store user in sessionStorage for UI state
+        sessionStorage.setItem('current_user', JSON.stringify(response.user));
+        showToast('👋 ' + response.message, 'success');
+        renderUserPanel(response.user);
+    },
+    error: function() {
+        showToast('❌ Invalid email or password.', 'error');
     }
 });
 ```
@@ -140,7 +195,7 @@ showToast('Pricing updated', 'info');        // blue
 
 ### Stats Grid (Top Bar)
 
-4 live KPI cards auto-populated on page load:
+5 live KPI cards auto-populated on page load:
 
 | ID | Metric | Source |
 |---|---|---|
@@ -148,6 +203,7 @@ showToast('Pricing updated', 'info');        // blue
 | `#stat-adr` | Average Daily Rate | Matrix price average |
 | `#stat-channels-count` | Active OTA channels | Health endpoint |
 | `#stat-sync-count` | Total DAG syncs | Sync logs count |
+| `#stat-users-count` | Registered users | `GET /api/users` |
 
 ### Availability & Price Matrix
 
@@ -155,6 +211,58 @@ showToast('Pricing updated', 'info');        // blue
 - Cells are color-coded by `status`: `available`, `critical`, `sold_out`
 - Each cell shows: **Price** + **Available/Total** units + occupancy %
 - Auto-refreshes after every booking simulation or pricing update
+
+### Users Management Panel
+
+New panel for registered guest accounts, backed by the `users` table:
+
+#### Create User Form
+
+```html
+<form id="create-user-form">
+    <input id="user-name"     type="text"     placeholder="Full Name"    required />
+    <input id="user-email"    type="email"    placeholder="Email"        required />
+    <input id="user-password" type="password" placeholder="Password"     required />
+    <input id="user-phone"    type="tel"      placeholder="Phone (opt.)" />
+    <select id="user-role">
+        <option value="guest">Guest</option>
+        <option value="staff">Staff</option>
+        <option value="admin">Admin</option>
+    </select>
+    <button type="submit" class="btn-primary">Create User</button>
+</form>
+```
+
+#### Login Form
+
+```html
+<form id="login-form">
+    <input id="login-email"    type="email"    placeholder="Email"    required />
+    <input id="login-password" type="password" placeholder="Password" required />
+    <button type="submit" class="btn-success">Login</button>
+</form>
+```
+
+#### Users Table (rendered from `GET /api/users`)
+
+| Column | Source field | Notes |
+|---|---|---|
+| ID | `id` | Auto-incremented |
+| Name | `name` | Registered name |
+| Email | `email` | Unique, lowercase |
+| Phone | `phone` | Optional |
+| Role | `role` | `guest` / `staff` / `admin` |
+| Status | `is_active` | 1 = Active, 0 = Deactivated |
+| Joined | `created_at` | ISO timestamp |
+| Actions | — | View Bookings · Deactivate |
+
+#### User Bookings Modal
+
+On clicking **View Bookings** for a user row, AJAX fetches:
+```
+GET /api/users/{id}/bookings
+```
+And renders a modal table with `booking_reference`, `check_in → check_out`, `room_type_name`, `total_price`, `status`.
 
 ### OTA Sync Log Table
 
@@ -173,7 +281,7 @@ Real-time webhook audit trail from `sync_logs` table:
 | Column | Description |
 |---|---|
 | Reference | Unique booking code |
-| Guest | Guest name |
+| Guest | Guest name (+ user link if registered) |
 | Room Type | Room category |
 | Channel | Source OTA |
 | Total | Total reservation price (USD) |
@@ -287,6 +395,13 @@ $('#stat-custom').text(response.your_value);
 | `GET` | `/api/health` | None | DB status + driver info |
 | `GET` | `/api/inventory-matrix?days=N` | None | Full NxN matrix JSON |
 | `POST` | `/api/check-availability` | None | Date-range room check |
+| `GET` | `/api/users` | None | List all users |
+| `POST` | `/api/users` | None | **Create new user** |
+| `POST` | `/api/users/login` | None | Login (email + password) |
+| `GET` | `/api/users/{id}` | None | Get single user by ID |
+| `PUT` | `/api/users/{id}` | None | Update user fields |
+| `DELETE` | `/api/users/{id}` | None | Deactivate user (soft) |
+| `GET` | `/api/users/{id}/bookings` | None | All bookings for a user |
 | `GET` | `/api/bookings` | None | Last 50 bookings |
 | `POST` | `/api/bookings` | None | Create direct booking |
 | `POST` | `/api/simulate-booking` | None | OTA simulation + DAG |
@@ -299,7 +414,7 @@ $('#stat-custom').text(response.your_value);
 | `POST` | `/api/cpp/allocate` | None | Multi-channel optimizer |
 | `POST` | `/api/cpp/rate-parity` | None | OTA parity auditor |
 | `POST` | `/api/migrate` | None | Run schema migrations |
-| `POST` | `/api/seed` | None | Seed initial data |
+| `POST` | `/api/seed` | None | Seed initial data (incl. users) |
 
 ---
 
@@ -313,6 +428,9 @@ $('#stat-custom').text(response.your_value);
 | Booking simulation fails | No room inventory for today | Re-run seeder |
 | C++ buttons return `offline` | Binary not compiled | `php artisan cpp:build` |
 | CORS errors in console | Request from different port | Use `127.0.0.1:8000` same-origin |
+| `POST /api/users` returns 422 | Email already exists | Use a different email |
+| `POST /api/users/login` returns 401 | Wrong password (stored plain text) | Check exact password used at registration |
+| Users table missing | Migration not run | `POST /api/migrate` first |
 
 ---
 
@@ -320,7 +438,8 @@ $('#stat-custom').text(response.your_value);
 
 - **React/Vue SPA:** Replace `index.html` + `app.js` with Vite-based SPA; backend API unchanged
 - **WebSockets:** Add real-time push for sync logs using Ratchet PHP or a Node.js socket gateway
-- **Authentication:** Wrap API routes with JWT bearer token middleware
+- **Session Auth:** Store logged-in user in `sessionStorage`; show/hide panels based on `role` field
+- **User Dashboard:** `/api/users/{id}/bookings` → personal reservation history page per guest
 - **Charts:** Integrate Chart.js for RevPAR trend lines and occupancy heat maps
 - **Multi-property:** Extend matrix table with hotel-level grouping headers
 
