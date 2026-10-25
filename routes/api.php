@@ -10,6 +10,7 @@ use App\Http\Controllers\BookingController;
 use App\Http\Controllers\PricingController;
 use App\Http\Controllers\SyncLogController;
 use App\Http\Controllers\MockOtaController;
+use App\Http\Controllers\CppEngineController;
 
 $router = new Router();
 
@@ -53,13 +54,21 @@ $router->get('/api/bookings', [BookingController::class, 'list']);
 $router->post('/api/bookings', [BookingController::class, 'create']);
 $router->post('/api/simulate-booking', [BookingController::class, 'simulate']);
 
-// 5. Dynamic Pricing Engine
+// 5. Dynamic Pricing Engine (PHP & C++ High-Yield)
 $router->post('/api/run-ai-pricing', [PricingController::class, 'runPricing']);
 
-// 6. External OTA Sync Logs (Audit Trail)
+// 6. C++ Algorithmic Core Micro-Services
+$router->get('/api/cpp/status', [CppEngineController::class, 'status']);
+$router->post('/api/cpp/benchmark', [CppEngineController::class, 'benchmark']);
+$router->post('/api/cpp/pricing', [CppEngineController::class, 'pricing']);
+$router->post('/api/cpp/dag-solve', [CppEngineController::class, 'dag']);
+$router->post('/api/cpp/allocate', [CppEngineController::class, 'allocate']);
+$router->post('/api/cpp/rate-parity', [CppEngineController::class, 'rateParity']);
+
+// 7. External OTA Sync Logs (Audit Trail)
 $router->get('/api/sync-logs', [SyncLogController::class, 'list']);
 
-// 7. Mock OTA Webhook Receivers
+// 8. Mock OTA Webhook Receivers
 $router->post('/api/mock-ota/booking-com', [MockOtaController::class, 'bookingCom']);
 $router->post('/api/mock-ota/agoda', [MockOtaController::class, 'agoda']);
 $router->post('/api/mock-ota/rakuten', [MockOtaController::class, 'rakuten']);

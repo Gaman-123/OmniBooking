@@ -59,6 +59,56 @@ switch ($command) {
         echo "\n";
         break;
 
+    case 'cpp:status':
+        echo "[*] Querying C++ Algorithmic Core Status...\n";
+        $bridge = new \App\Services\CppAlgorithmBridge();
+        $res = $bridge->getStatus();
+        echo json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+        break;
+
+    case 'cpp:build':
+        echo "[*] Compiling C++ Algorithmic Core Engine with g++...\n";
+        $binDir = __DIR__ . '/bin';
+        if (!is_dir($binDir)) {
+            mkdir($binDir, 0777, true);
+        }
+        $cmd = 'g++ -std=c++14 -O3 -Icpp/include cpp/src/dynamic_pricing.cpp cpp/src/inventory_allocator.cpp cpp/src/dag_scheduler.cpp cpp/src/rate_parity_auditor.cpp cpp/src/main.cpp -o bin/channel_engine.exe';
+        passthru($cmd, $returnVar);
+        if ($returnVar === 0) {
+            echo "[✓] Compilation succeeded: bin/channel_engine.exe ready!\n\n";
+        } else {
+            echo "[✗] Compilation failed with code {$returnVar}\n\n";
+        }
+        break;
+
+    case 'cpp:benchmark':
+        echo "[*] Executing C++ Micro-Benchmark (50k RMQ Queries & 30k Pricing Evaluations)...\n";
+        $bridge = new \App\Services\CppAlgorithmBridge();
+        $res = $bridge->runBenchmark();
+        echo json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+        break;
+
+    case 'cpp:pricing':
+        echo "[*] Computing Dynamic Pricing Matrix via C++ Engine...\n";
+        $bridge = new \App\Services\CppAlgorithmBridge();
+        $res = $bridge->runDynamicPricing();
+        echo json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+        break;
+
+    case 'cpp:dag':
+        echo "[*] Solving Directed Acyclic Graph (DAG) Task Schedule via C++ Engine...\n";
+        $bridge = new \App\Services\CppAlgorithmBridge();
+        $res = $bridge->solveDag();
+        echo json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+        break;
+
+    case 'cpp:parity':
+        echo "[*] Auditing Rate Parity across OTA Channels via C++ Engine...\n";
+        $bridge = new \App\Services\CppAlgorithmBridge();
+        $res = $bridge->auditRateParity();
+        echo json_encode($res, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . "\n\n";
+        break;
+
     case 'booking:simulate':
         echo "[*] Simulating incoming OTA booking...\n";
         $controller = new BookingController();
@@ -77,10 +127,16 @@ switch ($command) {
     case 'help':
     default:
         echo "Available Commands:\n";
-        echo "  php artisan migrate          Run database migrations (Neon SQL / SQLite)\n";
+        echo "  php artisan migrate          Run database migrations (MySQL / PostgreSQL / SQLite)\n";
         echo "  php artisan migrate:reset    Drop all database tables\n";
         echo "  php artisan db:seed          Seed sample hotels, room types, inventory & channels\n";
         echo "  php artisan db:status        Test database connection and driver status\n";
+        echo "  php artisan cpp:build        Compile C++ Algorithmic Core with g++\n";
+        echo "  php artisan cpp:status       Query C++ Engine status and capabilities\n";
+        echo "  php artisan cpp:benchmark    Run sub-millisecond C++ micro-benchmarks\n";
+        echo "  php artisan cpp:pricing      Compute dynamic pricing using C++ yield engine\n";
+        echo "  php artisan cpp:dag          Solve OTA fan-out DAG task schedule using C++ engine\n";
+        echo "  php artisan cpp:parity       Audit rate parity & OTA undercutting via C++ engine\n";
         echo "  php artisan booking:simulate Simulate an incoming OTA booking and DAG fan-out\n";
         echo "  php artisan serve            Start the local HTTP development server\n\n";
         break;
