@@ -15,7 +15,7 @@ class InventoryService
     {
         $today = new DateTime();
         $startDate = $today->format('Y-m-d');
-        
+
         $end = clone $today;
         $end->modify("+" . ($days - 1) . " days");
         $endDate = $end->format('Y-m-d');
@@ -66,8 +66,8 @@ class InventoryService
                     $price = (float) $rt['base_price'];
                 }
 
-                $occupancyRate = $rt['total_units'] > 0 
-                    ? max(0, min(100, round((1 - ($avail / $rt['total_units'])) * 100))) 
+                $occupancyRate = $rt['total_units'] > 0
+                    ? max(0, min(100, round((1 - ($avail / $rt['total_units'])) * 100)))
                     : 0;
 
                 $rowCells[] = [
@@ -148,8 +148,12 @@ class InventoryService
             }
         }
 
+        $bridge = new CppAlgorithmBridge();
+        $engineType = $bridge->isAvailable() ? 'C++17 High-Yield Computational Engine' : 'PHP Native Fallback';
+
         return [
             'status' => 'success',
+            'engine' => $engineType,
             'updated_count' => count($updatedItems),
             'items' => $updatedItems
         ];
