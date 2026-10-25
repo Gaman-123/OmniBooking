@@ -1,0 +1,143 @@
+name: 🐳 Build · Test · Deploy — Omni Booking
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  DOCKER_IMAGE: omni-booking
+
+jobs:
+  # ────────────────────────────────────────────────────
+  # JOB 1: Build Docker image and verify C++ engine
+  # ────────────────────────────────────────────────────
+  build:
+    name: 🔨 Build & Verify
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --tag ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            --tag ${{ env.DOCKER_IMAGE }}:latest \
+            .
+
+      - name: Verify C++ engine compiles and runs
+        run: |
+          docker run --rm ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            /var/www/omni-booking/bin/channel_engine --status
+
+      - name: Run C++ benchmark inside container
+        run: |
+          docker run --rm ${{ env.DOCKER_IMAGE }}:${{ github.sha }} \
+            /var/www/omni-booking/bin/channel_engine --benchmark
+
+      - name: Save image as artifact (for deploy job)
+        run: docker save ${{ env.DOCKER_IMAGE }}:${{ github.sha }} | gzip > image.tar.gz
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: docker-image
+          path: image.tar.gz
+          retention-days: 1
+
+  # ────────────────────────────────────────────────────
+  # JOB 2: Deploy to AWS EC2 (only on push to main)
+  # ────────────────────────────────────────────────────
+  deploy:
+    name: 🚀 Deploy to AWS EC2
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Download image artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: docker-image
+
+      - name: Copy image to EC2 via SCP
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.AWS_EC2_IP }}
+          username: ec2-user
+          key: ${{ secrets.AWS_SSH_KEY }}
+          source: image.tar.gz
+          target: /home/ec2-user/
+
+      - name: Load image and restart container on EC2
+        uses: appleboy/ssh-action@v1.0.0
+        with:
+          host: ${{ secrets.AWS_EC2_IP }}
+          username: ec2-user
+          key: ${{ secrets.AWS_SSH_KEY }}
+          script: |
+            set -e
+
+            echo "📦 Loading new Docker image..."
+            docker load < /home/ec2-user/image.tar.gz
+            rm -f /home/ec2-user/image.tar.gz
+
+            echo "🛑 Stopping old container..."
+            docker stop omni-booking 2>/dev/null || true
+            docker rm   omni-booking 2>/dev/null || true
+
+            echo "🚀 Starting new container..."
+            docker run -d \
+              --name omni-booking \
+              --restart unless-stopped \
+              -p 80:80 \
+              -e APP_ENV=production \
+              -e APP_DEBUG=false \
+              -e APP_URL=https://${{ secrets.APP_DOMAIN }} \
+              -e DB_CONNECTION=mysql \
+              -e DB_HOST=${{ secrets.RDS_HOST }} \
+              -e DB_PORT=3306 \
+              -e DB_DATABASE=omni_booking \
+              -e DB_USERNAME=admin \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e CPP_ENGINE_PATH=bin/channel_engine \
+              omni-booking:${{ github.sha }}
+
+            echo "⏳ Waiting for container to be ready..."
+            sleep 5
+
+            echo "🗄️ Running database migrations..."
+            docker exec omni-booking php artisan migrate --force
+
+            echo "✅ Health check..."
+            curl -sf http://localhost/api/health | grep '"status":"healthy"' \
+              && echo "🟢 Health check passed!" \
+              || (echo "🔴 Health check FAILED" && exit 1)
+
+            echo "🧹 Cleaning up old images..."
+            docker image prune -f
+
+  # ────────────────────────────────────────────────────
+  # JOB 3: Post-deploy notification
+  # ────────────────────────────────────────────────────
+  notify:
+    name: 📣 Notify
+    runs-on: ubuntu-latest
+    needs: deploy
+    if: always()
+
+    steps:
+      - name: Deployment status
+        run: |
+          if [ "${{ needs.deploy.result }}" == "success" ]; then
+            echo "✅ Deployment SUCCEEDED — commit ${{ github.sha }}"
+          else
+            echo "❌ Deployment FAILED — check logs above"
+            exit 1
+          fi
