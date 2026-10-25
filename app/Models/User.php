@@ -8,7 +8,7 @@ use PDO;
 /**
  * User Model
  * Handles registered guests, staff, and admins.
- * Passwords are stored as bcrypt hashes — never plaintext.
+ * Passwords are stored as plain text.
  */
 class User
 {
@@ -77,7 +77,7 @@ class User
     // ─── Create ───────────────────────────────────────────────────────────────
 
     /**
-     * Create a new user.
+     * Create a new user. Password stored as plain text.
      * @param array{name: string, email: string, password: string, phone?: string, role?: string} $data
      */
     public static function create(array $data): int
@@ -90,9 +90,9 @@ class User
         $stmt->execute([
             trim($data['name']),
             strtolower(trim($data['email'])),
-            $data['phone']  ?? null,
-            password_hash($data['password'], PASSWORD_BCRYPT, ['cost' => 12]),
-            $data['role']   ?? 'guest',
+            $data['phone']    ?? null,
+            $data['password'],          // plain text — no hashing
+            $data['role']     ?? 'guest',
         ]);
         return (int) $db->lastInsertId();
     }
@@ -101,13 +101,13 @@ class User
 
     public static function update(int $id, array $fields): bool
     {
-        $allowed = ['name', 'phone', 'avatar_url', 'is_active', 'role'];
+        $allowed = ['name', 'phone', 'avatar_url', 'is_active', 'role', 'password'];
         $sets    = [];
         $values  = [];
 
         foreach ($allowed as $col) {
             if (array_key_exists($col, $fields)) {
-                $sets[]  = "{$col} = ?";
+                $sets[]   = "{$col} = ?";
                 $values[] = $fields[$col];
             }
         }
@@ -117,27 +117,15 @@ class User
         }
 
         $values[] = $id;
-        $db  = Connection::getInstance();
         $sql = 'UPDATE users SET ' . implode(', ', $sets) . ' WHERE id = ?';
-        return $db->prepare($sql)->execute($values);
-    }
-
-    public static function updatePassword(int $id, string $newPassword): bool
-    {
-        $stmt = Connection::getInstance()->prepare("
-            UPDATE users SET password = ? WHERE id = ?
-        ");
-        return $stmt->execute([
-            password_hash($newPassword, PASSWORD_BCRYPT, ['cost' => 12]),
-            $id,
-        ]);
+        return Connection::getInstance()->prepare($sql)->execute($values);
     }
 
     // ─── Auth ─────────────────────────────────────────────────────────────────
 
     /**
-     * Verify a user's plain-text password against their bcrypt hash.
-     * Returns the user row on success, null on failure.
+     * Verify email + plain-text password.
+     * Returns the user row (without password) on success, null on failure.
      */
     public static function authenticate(string $email, string $password): ?array
     {
@@ -148,31 +136,25 @@ class User
         }
 
         if (!$user['is_active']) {
-            return null; // Suspended account
-        }
-
-        if (!password_verify($password, $user['password'])) {
             return null;
         }
 
-        // Unset password before returning
+        // Plain-text comparison
+        if ($user['password'] !== $password) {
+            return null;
+        }
+
         unset($user['password']);
         return $user;
     }
 
     // ─── Delete / Deactivate ─────────────────────────────────────────────────
 
-    /**
-     * Soft-delete: deactivate the user (preserves booking history).
-     */
     public static function deactivate(int $id): bool
     {
         return static::update($id, ['is_active' => 0]);
     }
 
-    /**
-     * Hard-delete. Only use when no bookings reference the user.
-     */
     public static function delete(int $id): bool
     {
         $stmt = Connection::getInstance()->prepare("DELETE FROM users WHERE id = ?");

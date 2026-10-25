@@ -11,6 +11,7 @@ use App\Http\Controllers\PricingController;
 use App\Http\Controllers\SyncLogController;
 use App\Http\Controllers\MockOtaController;
 use App\Http\Controllers\CppEngineController;
+use App\Http\Controllers\UserController;
 
 $router = new Router();
 
@@ -49,7 +50,16 @@ $router->post('/api/seed', function() {
 $router->get('/api/inventory-matrix', [InventoryController::class, 'getMatrix']);
 $router->post('/api/check-availability', [InventoryController::class, 'checkAvailability']);
 
-// 4. Bookings & Concurrency Protection
+// 4. User Management
+$router->get('/api/users',               [UserController::class, 'list']);
+$router->post('/api/users',              [UserController::class, 'create']);
+$router->post('/api/users/login',        [UserController::class, 'login']);
+$router->get('/api/users/{id}',          [UserController::class, 'show']);
+$router->put('/api/users/{id}',          [UserController::class, 'update']);
+$router->delete('/api/users/{id}',       [UserController::class, 'deactivate']);
+$router->get('/api/users/{id}/bookings', [UserController::class, 'bookings']);
+
+// 5. Bookings & Concurrency Protection
 $router->get('/api/bookings', [BookingController::class, 'list']);
 $router->post('/api/bookings', [BookingController::class, 'create']);
 $router->post('/api/simulate-booking', [BookingController::class, 'simulate']);
