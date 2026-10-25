@@ -73,7 +73,10 @@ class Inventory
               AND available_rooms >= ?
         ");
         $stmt->execute([$roomsCount, $roomTypeId, $checkIn, $checkOut, $roomsCount]);
-        return $stmt->rowCount() > 0;
+
+        $days = (int) (new \DateTime($checkIn))->diff(new \DateTime($checkOut))->days;
+        $expectedUpdates = max(1, $days);
+        return $stmt->rowCount() >= $expectedUpdates;
     }
 
     /**
@@ -84,7 +87,13 @@ class Inventory
         $db = Connection::getInstance();
         $driver = Connection::getActiveDriver();
 
-        if ($driver === 'pgsql') {
+        if ($driver === 'mysql') {
+            $sql = "
+                INSERT INTO inventories (room_type_id, date, available_rooms, price)
+                VALUES (?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE available_rooms = VALUES(available_rooms), price = VALUES(price);
+            ";
+        } else if ($driver === 'pgsql') {
             $sql = "
                 INSERT INTO inventories (room_type_id, date, available_rooms, price)
                 VALUES (?, ?, ?, ?)
