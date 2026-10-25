@@ -90,6 +90,7 @@ class DatabaseSeeder
         $stmt = $db->query("SELECT COUNT(*) as cnt FROM channels");
         $chanCount = (int) $stmt->fetch()['cnt'];
 
+        $channelIds = [];
         if ($chanCount === 0) {
             $channels = [
                 ['name' => 'Booking.com', 'url' => 'http://127.0.0.1:8000/api/mock-ota/booking-com'],
@@ -98,11 +99,56 @@ class DatabaseSeeder
             ];
 
             foreach ($channels as $c) {
-                Channel::create($c['name'], $c['url'], true);
-                $logs[] = "Seeded OTA Channel: '{$c['name']}'";
+                $cId = Channel::create($c['name'], $c['url'], true);
+                $channelIds[] = $cId;
+                $logs[] = "Seeded OTA Channel: '{$c['name']}' (ID: {$cId})";
             }
         } else {
-            $logs[] = "Channels already exist.";
+            $stmt = $db->query("SELECT id FROM channels");
+            while ($row = $stmt->fetch()) {
+                $channelIds[] = (int) $row['id'];
+            }
+            $logs[] = "Found " . count($channelIds) . " existing channels.";
+        }
+
+        // 5. Seed Initial Sample Bookings if none exist
+        $stmt = $db->query("SELECT COUNT(*) as cnt FROM bookings");
+        $bookingCount = (int) $stmt->fetch()['cnt'];
+
+        if ($bookingCount === 0 && !empty($roomTypeIds) && !empty($channelIds)) {
+            $sampleGuests = [
+                ['name' => 'Alexander Wright', 'days_offset' => 1, 'nights' => 3, 'price' => 720.00],
+                ['name' => 'Mei-Ling Zhou', 'days_offset' => 4, 'nights' => 2, 'price' => 370.00],
+                ['name' => 'Carlos Hernandez', 'days_offset' => 7, 'nights' => 4, 'price' => 1240.00]
+            ];
+
+            foreach ($sampleGuests as $idx => $sg) {
+                $checkIn = (clone $today)->modify("+{$sg['days_offset']} days")->format('Y-m-d');
+                $checkOut = (clone $today)->modify("+" . ($sg['days_offset'] + $sg['nights']) . " days")->format('Y-m-d');
+                $rtId = $roomTypeIds[$idx % count($roomTypeIds)]['id'];
+                $chId = $channelIds[$idx % count($channelIds)];
+
+                $bId = \App\Models\Booking::create([
+                    'booking_reference' => 'OB-INIT' . str_pad($idx + 1, 3, '0', STR_PAD_LEFT),
+                    'guest_name' => $sg['name'],
+                    'room_type_id' => $rtId,
+                    'channel_id' => $chId,
+                    'check_in' => $checkIn,
+                    'check_out' => $checkOut,
+                    'total_price' => $sg['price'],
+                    'status' => 'confirmed'
+                ]);
+
+                \App\Models\SyncLog::record($bId, $chId, [
+                    'event' => 'inventory.seeded',
+                    'timestamp' => date('c'),
+                    'booking_ref' => 'OB-INIT' . str_pad($idx + 1, 3, '0', STR_PAD_LEFT),
+                    'channel' => 'Initial Seed Sync',
+                    'message' => 'Initial inventory broadcast established'
+                ], 200, rand(18, 42));
+
+                $logs[] = "Seeded Initial Booking: '{$sg['name']}' ({$checkIn} to {$checkOut})";
+            }
         }
 
         return $logs;
