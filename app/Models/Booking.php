@@ -36,6 +36,27 @@ class Booking
         return $row ?: null;
     }
 
+    public static function findByReference(string $ref): ?array
+    {
+        $stmt = Connection::getInstance()->prepare("
+            SELECT b.*, rt.name as room_type_name, c.name as channel_name
+            FROM bookings b
+            LEFT JOIN room_types rt ON b.room_type_id = rt.id
+            LEFT JOIN channels c ON b.channel_id = c.id
+            WHERE b.booking_reference = ?
+        ");
+        $stmt->execute([$ref]);
+        $row = $stmt->fetch();
+        return $row ?: null;
+    }
+
+    public static function count(): int
+    {
+        $stmt = Connection::getInstance()->query("SELECT COUNT(*) as cnt FROM bookings");
+        $row = $stmt->fetch();
+        return (int) ($row['cnt'] ?? 0);
+    }
+
     public static function create(array $data): int
     {
         $db = Connection::getInstance();
