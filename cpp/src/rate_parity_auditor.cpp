@@ -92,7 +92,7 @@ double RateParityAuditor::calculateParityScore(
     }
 
     double rawScore = 100.0 - (penalty / static_cast<double>(totalChecks));
-    return std::clamp(std::round(rawScore * 10.0) / 10.0, 0.0, 100.0);
+    return clamp_val(std::round(rawScore * 10.0) / 10.0, 0.0, 100.0);
 }
 
 } // namespace OmniBooking

@@ -7,6 +7,11 @@
 
 namespace OmniBooking {
 
+template<typename T>
+inline constexpr const T& clamp_val(const T& v, const T& lo, const T& hi) {
+    return (v < lo) ? lo : (hi < v) ? hi : v;
+}
+
 /**
  * Inventory snapshot for a specific room type on a given calendar date
  */

@@ -85,7 +85,7 @@ CalculatedPrice DynamicPricingEngine::calculatePrice(const RoomInventory& invent
     if (inventory.total_units > 0) {
         occupancy = static_cast<double>(inventory.total_units - inventory.available_rooms) / inventory.total_units;
     }
-    occupancy = std::clamp(occupancy, 0.0, 1.0);
+    occupancy = clamp_val(occupancy, 0.0, 1.0);
 
     // 1. Base occupancy surge
     double surgeMult = calculateSurgeMultiplier(occupancy);
@@ -99,7 +99,7 @@ CalculatedPrice DynamicPricingEngine::calculatePrice(const RoomInventory& invent
     // Combined multiplier
     double finalMultiplier = surgeMult * weekendMult * leadTimeMult;
     // Keep within safe operational bounds
-    finalMultiplier = std::clamp(finalMultiplier, params_.min_discount_multiplier, params_.max_surge_multiplier);
+    finalMultiplier = clamp_val(finalMultiplier, params_.min_discount_multiplier, params_.max_surge_multiplier);
 
     double calculated = inventory.base_price * finalMultiplier;
     // Round to 2 decimal places
@@ -110,7 +110,7 @@ CalculatedPrice DynamicPricingEngine::calculatePrice(const RoomInventory& invent
     
     // RevPAR calculation: Price * Occupancy Probability
     double elasticityFactor = std::max(0.5, 1.0 - ((finalMultiplier - 1.0) * (params_.price_elasticity - 1.0)));
-    result.projected_occupancy = std::clamp(occupancy * elasticityFactor, 0.05, 1.0);
+    result.projected_occupancy = clamp_val(occupancy * elasticityFactor, 0.05, 1.0);
     result.expected_revpar = std::round((result.recommended_price * result.projected_occupancy) * 100.0) / 100.0;
 
     // Tier Classification & Rationale

@@ -76,7 +76,7 @@ int main(int argc, char* argv[]) {
             RoomInventory inv;
             inv.room_type_id = (i % 3) + 1;
             inv.room_type_name = "Suite " + std::to_string(inv.room_type_id);
-            inv.date = "2026-11-" + (i < 9 ? "0" : "") + std::to_string(i + 1);
+            inv.date = std::string("2026-11-") + (i < 9 ? "0" : "") + std::to_string(i + 1);
             inv.total_units = 20;
             inv.available_rooms = (i % 7 == 0) ? 2 : 14;
             inv.base_price = 220.0;

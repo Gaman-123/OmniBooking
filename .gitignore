@@ -13,6 +13,10 @@ composer.phar
 *.sqlite-journal
 *.log
 
+# Compiled binaries
+bin/
+*.exe
+
 # System files
 .DS_Store
 Thumbs.db

@@ -49,7 +49,9 @@ DagExecutionPlan DagScheduler::solve() const {
     std::queue<std::string> q;
     std::map<std::string, int> earliestFinish;
 
-    for (const auto& [id, deg] : inDegree) {
+    for (const auto& pair : inDegree) {
+        const std::string& id = pair.first;
+        int deg = pair.second;
         if (deg == 0) {
             q.push(id);
             earliestFinish[id] = nodeMap[id]->estimated_latency_ms;
@@ -94,7 +96,8 @@ DagExecutionPlan DagScheduler::solve() const {
 
     // Critical Path Duration: Max earliestFinish across all terminal nodes
     int maxDuration = 0;
-    for (const auto& [id, finishTime] : earliestFinish) {
+    for (const auto& pair : earliestFinish) {
+        int finishTime = pair.second;
         maxDuration = std::max(maxDuration, finishTime);
     }
 
