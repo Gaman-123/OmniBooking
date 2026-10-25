@@ -19,6 +19,16 @@ class Router
         $this->routes['POST'][$path] = $handler;
     }
 
+    public function put(string $path, callable|array $handler): void
+    {
+        $this->routes['PUT'][$path] = $handler;
+    }
+
+    public function delete(string $path, callable|array $handler): void
+    {
+        $this->routes['DELETE'][$path] = $handler;
+    }
+
     public function dispatch(): void
     {
         // CORS & Content-Type Headers
@@ -39,9 +49,32 @@ class Router
             $uri = rtrim($uri, '/');
         }
 
-        // Check defined route
+        // Check defined route directly or via regex pattern match
+        $handler = null;
+        $matchedParams = [];
+
         if (isset($this->routes[$method][$uri])) {
             $handler = $this->routes[$method][$uri];
+        } else if (isset($this->routes[$method])) {
+            foreach ($this->routes[$method] as $routePattern => $h) {
+                if (str_contains($routePattern, '{')) {
+                    $pattern = preg_replace('/\{([a-zA-Z0-9_]+)\}/', '(?P<$1>[^/]+)', $routePattern);
+                    $pattern = '#^' . $pattern . '$#';
+                    if (preg_match($pattern, $uri, $matches)) {
+                        $handler = $h;
+                        foreach ($matches as $k => $v) {
+                            if (!is_int($k)) {
+                                $matchedParams[$k] = $v;
+                                $_GET[$k] = $v; // populate for controller access
+                            }
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        if ($handler !== null) {
             try {
                 if (is_array($handler)) {
                     [$class, $action] = $handler;
