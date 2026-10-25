@@ -7,6 +7,7 @@ use App\Models\Hotel;
 use App\Models\RoomType;
 use App\Models\Channel;
 use App\Models\Inventory;
+use App\Models\User;
 use DateTime;
 use Exception;
 
@@ -111,43 +112,100 @@ class DatabaseSeeder
             $logs[] = "Found " . count($channelIds) . " existing channels.";
         }
 
-        // 5. Seed Initial Sample Bookings if none exist
+        // 5. Seed Users
+        $stmt = $db->query("SELECT COUNT(*) as cnt FROM users");
+        $userCount = (int) $stmt->fetch()['cnt'];
+
+        $userIds = [];
+        if ($userCount === 0) {
+            $seedUsers = [
+                [
+                    'name'     => 'Admin User',
+                    'email'    => 'admin@omnibooking.com',
+                    'password' => 'Admin@1234',
+                    'phone'    => '+91-9000000001',
+                    'role'     => 'admin',
+                ],
+                [
+                    'name'     => 'Alexander Wright',
+                    'email'    => 'alexander.wright@example.com',
+                    'password' => 'Guest@1234',
+                    'phone'    => '+1-555-010-0001',
+                    'role'     => 'guest',
+                ],
+                [
+                    'name'     => 'Mei-Ling Zhou',
+                    'email'    => 'meiling.zhou@example.com',
+                    'password' => 'Guest@1234',
+                    'phone'    => '+86-13800138001',
+                    'role'     => 'guest',
+                ],
+                [
+                    'name'     => 'Carlos Hernandez',
+                    'email'    => 'carlos.hernandez@example.com',
+                    'password' => 'Guest@1234',
+                    'phone'    => '+52-55-1234-5678',
+                    'role'     => 'guest',
+                ],
+            ];
+
+            foreach ($seedUsers as $u) {
+                $uid = User::create($u);
+                $userIds[] = $uid;
+                $logs[] = "Seeded User: '{$u['name']}' <{$u['email']}> [{$u['role']}] (ID: {$uid})";
+            }
+        } else {
+            $stmt = $db->query("SELECT id FROM users WHERE role = 'guest' LIMIT 3");
+            while ($row = $stmt->fetch()) {
+                $userIds[] = (int) $row['id'];
+            }
+            $logs[] = "Found {$userCount} existing users.";
+        }
+
+        // 6. Seed Initial Sample Bookings if none exist
         $stmt = $db->query("SELECT COUNT(*) as cnt FROM bookings");
         $bookingCount = (int) $stmt->fetch()['cnt'];
 
         if ($bookingCount === 0 && !empty($roomTypeIds) && !empty($channelIds)) {
+            // Guest user IDs (skip index 0 = admin)
+            $guestUserIds = array_slice($userIds, 1);
+
             $sampleGuests = [
-                ['name' => 'Alexander Wright', 'days_offset' => 1, 'nights' => 3, 'price' => 720.00],
-                ['name' => 'Mei-Ling Zhou', 'days_offset' => 4, 'nights' => 2, 'price' => 370.00],
-                ['name' => 'Carlos Hernandez', 'days_offset' => 7, 'nights' => 4, 'price' => 1240.00]
+                ['name' => 'Alexander Wright', 'email' => 'alexander.wright@example.com', 'days_offset' => 1, 'nights' => 3, 'price' => 720.00,  'special' => 'Ocean-view room preferred'],
+                ['name' => 'Mei-Ling Zhou',    'email' => 'meiling.zhou@example.com',    'days_offset' => 4, 'nights' => 2, 'price' => 370.00,  'special' => 'Early check-in requested'],
+                ['name' => 'Carlos Hernandez', 'email' => 'carlos.hernandez@example.com','days_offset' => 7, 'nights' => 4, 'price' => 1240.00, 'special' => 'Airport transfer needed'],
             ];
 
             foreach ($sampleGuests as $idx => $sg) {
-                $checkIn = (clone $today)->modify("+{$sg['days_offset']} days")->format('Y-m-d');
+                $checkIn  = (clone $today)->modify("+{$sg['days_offset']} days")->format('Y-m-d');
                 $checkOut = (clone $today)->modify("+" . ($sg['days_offset'] + $sg['nights']) . " days")->format('Y-m-d');
-                $rtId = $roomTypeIds[$idx % count($roomTypeIds)]['id'];
-                $chId = $channelIds[$idx % count($channelIds)];
+                $rtId     = $roomTypeIds[$idx % count($roomTypeIds)]['id'];
+                $chId     = $channelIds[$idx % count($channelIds)];
+                $uid      = $guestUserIds[$idx % count($guestUserIds)] ?? null;
 
                 $bId = \App\Models\Booking::create([
                     'booking_reference' => 'OB-INIT' . str_pad($idx + 1, 3, '0', STR_PAD_LEFT),
-                    'guest_name' => $sg['name'],
-                    'room_type_id' => $rtId,
-                    'channel_id' => $chId,
-                    'check_in' => $checkIn,
-                    'check_out' => $checkOut,
-                    'total_price' => $sg['price'],
-                    'status' => 'confirmed'
+                    'user_id'           => $uid,
+                    'guest_name'        => $sg['name'],
+                    'guest_email'       => $sg['email'],
+                    'room_type_id'      => $rtId,
+                    'channel_id'        => $chId,
+                    'check_in'          => $checkIn,
+                    'check_out'         => $checkOut,
+                    'total_price'       => $sg['price'],
+                    'status'            => 'confirmed',
+                    'special_requests'  => $sg['special'],
                 ]);
 
                 \App\Models\SyncLog::record($bId, $chId, [
-                    'event' => 'inventory.seeded',
-                    'timestamp' => date('c'),
+                    'event'       => 'inventory.seeded',
+                    'timestamp'   => date('c'),
                     'booking_ref' => 'OB-INIT' . str_pad($idx + 1, 3, '0', STR_PAD_LEFT),
-                    'channel' => 'Initial Seed Sync',
-                    'message' => 'Initial inventory broadcast established'
+                    'channel'     => 'Initial Seed Sync',
+                    'message'     => 'Initial inventory broadcast established'
                 ], 200, rand(18, 42));
 
-                $logs[] = "Seeded Initial Booking: '{$sg['name']}' ({$checkIn} to {$checkOut})";
+                $logs[] = "Seeded Booking: '{$sg['name']}' (user_id: {$uid}) [{$checkIn} → {$checkOut}]";
             }
         }
 

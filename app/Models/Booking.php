@@ -10,10 +10,15 @@ class Booking
     public static function all(int $limit = 50): array
     {
         $stmt = Connection::getInstance()->prepare("
-            SELECT b.*, rt.name as room_type_name, c.name as channel_name
+            SELECT b.*,
+                   rt.name as room_type_name,
+                   c.name  as channel_name,
+                   u.name  as user_full_name,
+                   u.email as user_email
             FROM bookings b
             LEFT JOIN room_types rt ON b.room_type_id = rt.id
-            LEFT JOIN channels c ON b.channel_id = c.id
+            LEFT JOIN channels   c  ON b.channel_id   = c.id
+            LEFT JOIN users      u  ON b.user_id       = u.id
             ORDER BY b.id DESC
             LIMIT ?
         ");
@@ -22,13 +27,37 @@ class Booking
         return $stmt->fetchAll();
     }
 
+    public static function findByUser(int $userId, int $limit = 20): array
+    {
+        $stmt = Connection::getInstance()->prepare("
+            SELECT b.*,
+                   rt.name as room_type_name,
+                   c.name  as channel_name
+            FROM bookings b
+            LEFT JOIN room_types rt ON b.room_type_id = rt.id
+            LEFT JOIN channels   c  ON b.channel_id   = c.id
+            WHERE b.user_id = ?
+            ORDER BY b.created_at DESC
+            LIMIT ?
+        ");
+        $stmt->bindValue(1, $userId, PDO::PARAM_INT);
+        $stmt->bindValue(2, $limit,  PDO::PARAM_INT);
+        $stmt->execute();
+        return $stmt->fetchAll();
+    }
+
     public static function find(int $id): ?array
     {
         $stmt = Connection::getInstance()->prepare("
-            SELECT b.*, rt.name as room_type_name, c.name as channel_name
+            SELECT b.*,
+                   rt.name as room_type_name,
+                   c.name  as channel_name,
+                   u.name  as user_full_name,
+                   u.email as user_email
             FROM bookings b
             LEFT JOIN room_types rt ON b.room_type_id = rt.id
-            LEFT JOIN channels c ON b.channel_id = c.id
+            LEFT JOIN channels   c  ON b.channel_id   = c.id
+            LEFT JOIN users      u  ON b.user_id       = u.id
             WHERE b.id = ?
         ");
         $stmt->execute([$id]);
@@ -39,10 +68,15 @@ class Booking
     public static function findByReference(string $ref): ?array
     {
         $stmt = Connection::getInstance()->prepare("
-            SELECT b.*, rt.name as room_type_name, c.name as channel_name
+            SELECT b.*,
+                   rt.name as room_type_name,
+                   c.name  as channel_name,
+                   u.name  as user_full_name,
+                   u.email as user_email
             FROM bookings b
             LEFT JOIN room_types rt ON b.room_type_id = rt.id
-            LEFT JOIN channels c ON b.channel_id = c.id
+            LEFT JOIN channels   c  ON b.channel_id   = c.id
+            LEFT JOIN users      u  ON b.user_id       = u.id
             WHERE b.booking_reference = ?
         ");
         $stmt->execute([$ref]);
@@ -62,19 +96,23 @@ class Booking
         $db = Connection::getInstance();
         $stmt = $db->prepare("
             INSERT INTO bookings (
-                booking_reference, guest_name, room_type_id, channel_id, 
-                check_in, check_out, total_price, status
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                booking_reference, user_id, guest_name, guest_email,
+                room_type_id, channel_id,
+                check_in, check_out, total_price, status, special_requests
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
             $data['booking_reference'],
-            $data['guest_name'] ?? 'Guest',
+            $data['user_id']          ?? null,
+            $data['guest_name']       ?? 'Guest',
+            $data['guest_email']      ?? null,
             $data['room_type_id'],
-            $data['channel_id'] ?? null,
+            $data['channel_id']       ?? null,
             $data['check_in'],
             $data['check_out'],
             $data['total_price'],
-            $data['status'] ?? 'confirmed'
+            $data['status']           ?? 'confirmed',
+            $data['special_requests'] ?? null,
         ]);
         return (int) $db->lastInsertId();
     }
