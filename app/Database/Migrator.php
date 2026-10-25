@@ -26,6 +26,19 @@ class Migrator
         if ($this->driver === 'mysql') {
             // Native MySQL (InnoDB) DDL
             $queries = [
+                'users' => "
+                    CREATE TABLE IF NOT EXISTS users (
+                        id          INT AUTO_INCREMENT PRIMARY KEY,
+                        name        VARCHAR(150)  NOT NULL,
+                        email       VARCHAR(255)  NOT NULL UNIQUE,
+                        phone       VARCHAR(30)   NULL,
+                        password    VARCHAR(255)  NOT NULL,
+                        role        ENUM('guest','staff','admin') NOT NULL DEFAULT 'guest',
+                        is_active   TINYINT(1)   NOT NULL DEFAULT 1,
+                        avatar_url  VARCHAR(500)  NULL,
+                        created_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at  TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+                    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
                 'hotels' => "
                     CREATE TABLE IF NOT EXISTS hotels (
                         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -65,18 +78,23 @@ class Migrator
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
                 'bookings' => "
                     CREATE TABLE IF NOT EXISTS bookings (
-                        id INT AUTO_INCREMENT PRIMARY KEY,
-                        booking_reference VARCHAR(50) NOT NULL UNIQUE,
-                        guest_name VARCHAR(150) NULL,
-                        room_type_id INT NOT NULL,
-                        channel_id INT NULL,
-                        check_in DATE NOT NULL,
-                        check_out DATE NOT NULL,
-                        total_price DECIMAL(10,2) NOT NULL,
-                        status VARCHAR(20) DEFAULT 'confirmed',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        CONSTRAINT fk_bookings_room_type FOREIGN KEY (room_type_id) REFERENCES room_types(id),
-                        CONSTRAINT fk_bookings_channel FOREIGN KEY (channel_id) REFERENCES channels(id)
+                        id                INT AUTO_INCREMENT PRIMARY KEY,
+                        booking_reference VARCHAR(50)    NOT NULL UNIQUE,
+                        user_id           INT            NULL,
+                        guest_name        VARCHAR(150)   NULL,
+                        guest_email       VARCHAR(255)   NULL,
+                        room_type_id      INT            NOT NULL,
+                        channel_id        INT            NULL,
+                        check_in          DATE           NOT NULL,
+                        check_out         DATE           NOT NULL,
+                        total_price       DECIMAL(10,2)  NOT NULL,
+                        status            VARCHAR(20)    NOT NULL DEFAULT 'confirmed',
+                        special_requests  TEXT           NULL,
+                        created_at        TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                        updated_at        TIMESTAMP      NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                        CONSTRAINT fk_bookings_user      FOREIGN KEY (user_id)      REFERENCES users(id)      ON DELETE SET NULL,
+                        CONSTRAINT fk_bookings_room_type FOREIGN KEY (room_type_id) REFERENCES room_types(id) ON DELETE RESTRICT,
+                        CONSTRAINT fk_bookings_channel   FOREIGN KEY (channel_id)   REFERENCES channels(id)   ON DELETE SET NULL
                     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
                 'sync_logs' => "
                     CREATE TABLE IF NOT EXISTS sync_logs (
@@ -94,6 +112,19 @@ class Migrator
         } else if ($this->driver === 'pgsql') {
             // Native Neon Serverless PostgreSQL DDL
             $queries = [
+                'users' => "
+                    CREATE TABLE IF NOT EXISTS users (
+                        id         SERIAL PRIMARY KEY,
+                        name       VARCHAR(150) NOT NULL,
+                        email      VARCHAR(255) NOT NULL UNIQUE,
+                        phone      VARCHAR(30),
+                        password   VARCHAR(255) NOT NULL,
+                        role       VARCHAR(20)  NOT NULL DEFAULT 'guest',
+                        is_active  SMALLINT     NOT NULL DEFAULT 1,
+                        avatar_url VARCHAR(500),
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    );",
                 'hotels' => "
                     CREATE TABLE IF NOT EXISTS hotels (
                         id SERIAL PRIMARY KEY,
@@ -131,16 +162,20 @@ class Migrator
                     );",
                 'bookings' => "
                     CREATE TABLE IF NOT EXISTS bookings (
-                        id SERIAL PRIMARY KEY,
+                        id                SERIAL PRIMARY KEY,
                         booking_reference VARCHAR(50) UNIQUE NOT NULL,
-                        guest_name VARCHAR(150),
-                        room_type_id INT REFERENCES room_types(id),
-                        channel_id INT REFERENCES channels(id),
-                        check_in DATE NOT NULL,
-                        check_out DATE NOT NULL,
-                        total_price DECIMAL(10,2) NOT NULL,
-                        status VARCHAR(20) DEFAULT 'confirmed',
-                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                        user_id           INT REFERENCES users(id) ON DELETE SET NULL,
+                        guest_name        VARCHAR(150),
+                        guest_email       VARCHAR(255),
+                        room_type_id      INT REFERENCES room_types(id),
+                        channel_id        INT REFERENCES channels(id),
+                        check_in          DATE NOT NULL,
+                        check_out         DATE NOT NULL,
+                        total_price       DECIMAL(10,2) NOT NULL,
+                        status            VARCHAR(20) DEFAULT 'confirmed',
+                        special_requests  TEXT,
+                        created_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at        TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );",
                 'sync_logs' => "
                     CREATE TABLE IF NOT EXISTS sync_logs (
@@ -156,6 +191,19 @@ class Migrator
         } else {
             // SQLite schema
             $queries = [
+                'users' => "
+                    CREATE TABLE IF NOT EXISTS users (
+                        id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                        name       VARCHAR(150) NOT NULL,
+                        email      VARCHAR(255) NOT NULL UNIQUE,
+                        phone      VARCHAR(30),
+                        password   VARCHAR(255) NOT NULL,
+                        role       VARCHAR(20)  NOT NULL DEFAULT 'guest',
+                        is_active  INTEGER      NOT NULL DEFAULT 1,
+                        avatar_url VARCHAR(500),
+                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                    );",
                 'hotels' => "
                     CREATE TABLE IF NOT EXISTS hotels (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -193,16 +241,20 @@ class Migrator
                     );",
                 'bookings' => "
                     CREATE TABLE IF NOT EXISTS bookings (
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        id                INTEGER PRIMARY KEY AUTOINCREMENT,
                         booking_reference VARCHAR(50) UNIQUE NOT NULL,
-                        guest_name VARCHAR(150),
-                        room_type_id INTEGER REFERENCES room_types(id),
-                        channel_id INTEGER REFERENCES channels(id),
-                        check_in DATE NOT NULL,
-                        check_out DATE NOT NULL,
-                        total_price NUMERIC(10,2) NOT NULL,
-                        status VARCHAR(20) DEFAULT 'confirmed',
-                        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+                        user_id           INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                        guest_name        VARCHAR(150),
+                        guest_email       VARCHAR(255),
+                        room_type_id      INTEGER REFERENCES room_types(id),
+                        channel_id        INTEGER REFERENCES channels(id),
+                        check_in          DATE NOT NULL,
+                        check_out         DATE NOT NULL,
+                        total_price       NUMERIC(10,2) NOT NULL,
+                        status            VARCHAR(20) DEFAULT 'confirmed',
+                        special_requests  TEXT,
+                        created_at        DATETIME DEFAULT CURRENT_TIMESTAMP,
+                        updated_at        DATETIME DEFAULT CURRENT_TIMESTAMP
                     );",
                 'sync_logs' => "
                     CREATE TABLE IF NOT EXISTS sync_logs (
@@ -234,7 +286,7 @@ class Migrator
      */
     public function reset(): array
     {
-        $tables = ['sync_logs', 'bookings', 'inventories', 'channels', 'room_types', 'hotels'];
+        $tables = ['sync_logs', 'bookings', 'inventories', 'channels', 'room_types', 'hotels', 'users'];
         $logs = [];
 
         if ($this->driver === 'mysql') {
