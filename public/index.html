@@ -3,174 +3,292 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Omni Booking - TEMA-Sync Channel Manager Dashboard</title>
+    <title>Omni Booking — Channel Manager</title>
+    <meta name="description" content="Omni Booking channel manager dashboard: availability, pricing, OTA sync and guest accounts.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,600;12..96,700&family=Instrument+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/css/style.css">
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
 </head>
 <body>
 
-<div class="dashboard-container">
-    <!-- Header -->
-    <header>
-        <div class="brand-wrapper">
-            <div class="brand-logo">Ω</div>
+<div class="shell">
+
+    <!-- ============ Header ============ -->
+    <header class="app-header">
+        <div class="brand">
+            <div class="brand-mark" aria-hidden="true">Ω</div>
             <div>
-                <h1 class="brand-title">TEMA-Sync Channel Manager Dashboard</h1>
-                <p class="brand-subtitle">Omni Booking Architecture • PHP/Laravel Core • Neon SQL (Serverless PostgreSQL)</p>
+                <h1>Omni Booking</h1>
+                <p>Channel manager for Booking.com, Agoda and Rakuten</p>
             </div>
         </div>
-        <div class="status-badge" id="db-health-badge">
-            <span class="status-dot"></span>
-            <span id="db-driver-label">Checking Database...</span>
+        <div class="header-status">
+            <button type="button" class="badge" id="db-health-badge" title="Database connection">
+                <span class="dot"></span>
+                <span id="db-driver-label">Checking database…</span>
+            </button>
+            <span class="badge" id="cpp-status-badge" title="C++ algorithmic engine">
+                <span class="dot"></span>
+                <span id="cpp-status-label">Checking engine…</span>
+            </span>
+            <span class="badge hidden" id="header-user-badge">
+                <span class="avatar sm" id="header-user-initial"></span>
+                <span id="header-user-name"></span>
+            </span>
         </div>
     </header>
 
-    <!-- Top Metrics Grid -->
-    <div class="stats-grid">
+    <!-- ============ KPI strip ============ -->
+    <section class="stats-grid" aria-label="Key metrics">
         <div class="stat-card">
-            <div class="stat-label">Properties & Rooms</div>
-            <div class="stat-val" id="stat-total-rooms">38 Units</div>
-            <div class="stat-sub" id="stat-property-name">Grand Horizon Palace</div>
+            <div class="stat-label">Room units</div>
+            <div class="stat-val" id="stat-total-rooms">—</div>
+            <div class="stat-sub" id="stat-room-types">Across all room types</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">Average Daily Rate (ADR)</div>
-            <div class="stat-val" id="stat-adr">$245.00</div>
-            <div class="stat-sub">Dynamic pricing active</div>
+            <div class="stat-label">Average daily rate</div>
+            <div class="stat-val" id="stat-adr">—</div>
+            <div class="stat-sub" id="stat-adr-sub">Mean price in view</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">OTA Channels Synced</div>
-            <div class="stat-val" id="stat-channels-count">3 Channels</div>
-            <div class="stat-sub">Booking.com • Agoda • Rakuten</div>
+            <div class="stat-label">OTA channels</div>
+            <div class="stat-val" id="stat-channels-count">—</div>
+            <div class="stat-sub" id="stat-channels-sub">Receiving updates</div>
         </div>
         <div class="stat-card">
-            <div class="stat-label">DAG Fan-Out Telemetry</div>
-            <div class="stat-val" id="stat-sync-count">0 Syncs</div>
-            <div class="stat-sub">Zero double-booking guarantee</div>
+            <div class="stat-label">Channel syncs</div>
+            <div class="stat-val" id="stat-sync-count">—</div>
+            <div class="stat-sub" id="stat-sync-sub">Webhooks sent</div>
         </div>
-    </div>
+        <div class="stat-card">
+            <div class="stat-label">Registered users</div>
+            <div class="stat-val" id="stat-users-count">—</div>
+            <div class="stat-sub" id="stat-users-sub">Guest and staff accounts</div>
+        </div>
+    </section>
 
-    <!-- Action Controls Bar -->
-    <div class="controls-bar">
-        <div class="btn-group">
-            <button id="run-ai-pricing" class="btn-primary">
-                <span>⚡ Run AI Dynamic Pricing</span>
-            </button>
-            <button id="simulate-booking" class="btn-success">
-                <span>🏨 Simulate OTA Booking</span>
-            </button>
-            <button id="refresh-matrix" class="btn-outline">
-                <span>🔄 Refresh Matrix</span>
-            </button>
-        </div>
-        <div class="btn-group">
-            <button id="view-db-details" class="btn-outline">
-                <span>🗄️ Database Health</span>
-            </button>
-        </div>
-    </div>
-
-    <!-- Live Toast / Notification Banner -->
-    <div id="action-toast" style="display:none; padding: 12px 18px; border-radius: 10px; margin-bottom: 20px; font-weight: 500;"></div>
-
-    <!-- Inventory Availability & Price Matrix Section -->
-    <div class="section-card">
-        <div class="section-header">
-            <div class="section-title">
-                <span>📅 Live Availability & Price Matrix</span>
+    <!-- ============ Availability & price matrix ============ -->
+    <section class="section-card" aria-labelledby="matrix-title">
+        <div class="card-head">
+            <div>
+                <h2 id="matrix-title">Availability and prices</h2>
+                <p id="matrix-range">Loading dates…</p>
             </div>
-            <div style="font-size: 0.82rem; color: var(--text-muted);">
-                Auto-refreshes on every OTA reservation
+            <div class="card-actions">
+                <div class="segmented" role="group" aria-label="Days to show" id="days-selector">
+                    <button type="button" data-days="7" aria-pressed="true">7 days</button>
+                    <button type="button" data-days="14" aria-pressed="false">14 days</button>
+                    <button type="button" data-days="30" aria-pressed="false">30 days</button>
+                </div>
+                <button type="button" id="run-ai-pricing" class="btn-outline">Run AI pricing</button>
+                <button type="button" id="simulate-booking" class="btn-primary">Simulate OTA booking</button>
             </div>
         </div>
 
-        <div class="table-responsive">
-            <table class="matrix-table" id="inventory-matrix-table">
-                <thead id="matrix-head">
-                    <tr>
-                        <th class="room-title-col">Room Type</th>
-                        <th>Today</th>
-                        <th>Tomorrow</th>
-                        <th>Day +2</th>
-                        <th>Day +3</th>
-                        <th>Day +4</th>
-                        <th>Day +5</th>
-                        <th>Day +6</th>
-                    </tr>
-                </thead>
+        <div class="table-scroll">
+            <table class="matrix" id="inventory-matrix-table">
+                <thead id="matrix-head"></thead>
                 <tbody id="matrix-body">
-                    <tr>
-                        <td colspan="8" style="text-align:center; padding: 30px; color: var(--text-muted);">
-                            Loading inventory matrix from Neon PostgreSQL...
-                        </td>
-                    </tr>
+                    <tr><td class="loading-state">Loading availability…</td></tr>
                 </tbody>
             </table>
         </div>
-    </div>
 
-    <!-- Dual Grid: Live OTA Sync Logs & Recent Bookings -->
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(460px, 1fr)); gap: 24px;">
-        <!-- OTA Sync Logs -->
-        <div class="section-card">
-            <div class="section-header">
-                <div class="section-title">
-                    <span>📡 External OTA Webhook Sync Logs</span>
-                </div>
-                <span style="font-size:0.78rem; color:#60a5fa;">DAG Asynchronous Fan-Out</span>
-            </div>
-            <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
-                <table class="log-table">
-                    <thead>
-                        <tr>
-                            <th>Channel</th>
-                            <th>Booking Ref</th>
-                            <th>HTTP Status</th>
-                            <th>Latency</th>
-                            <th>Time</th>
-                        </tr>
-                    </thead>
-                    <tbody id="sync-logs-body">
-                        <tr>
-                            <td colspan="5" style="text-align:center; padding:20px; color:var(--text-muted);">
-                                No sync logs yet. Click "Simulate OTA Booking" to trigger.
-                            </td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
+        <div class="matrix-legend" aria-hidden="true">
+            <span><i style="background: var(--accent-green)"></i>Available</span>
+            <span><i style="background: var(--accent-amber)"></i>2 or fewer left</span>
+            <span><i style="background: var(--accent-red)"></i>Sold out</span>
+            <span>Bar under each cell shows occupancy</span>
         </div>
+    </section>
 
-        <!-- Recent Bookings Feed -->
-        <div class="section-card">
-            <div class="section-header">
-                <div class="section-title">
-                    <span>🛎️ Recent Bookings & Channel Inflow</span>
+    <!-- ============ Bookings + Sync logs ============ -->
+    <div class="grid-2">
+        <section class="section-card" aria-labelledby="bookings-title">
+            <div class="card-head">
+                <div>
+                    <h2 id="bookings-title">Recent bookings</h2>
+                    <p>Latest 50 reservations from every channel</p>
                 </div>
-                <span style="font-size:0.78rem; color:#34d399;">ACID Confirmed</span>
+                <span class="live" data-live><span class="live-dot"></span><span class="live-text">Live</span></span>
             </div>
-            <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
-                <table class="log-table">
+            <div class="table-scroll scroll-y">
+                <table class="data-table">
                     <thead>
                         <tr>
                             <th>Reference</th>
                             <th>Guest</th>
-                            <th>Room Type</th>
+                            <th>Room type</th>
                             <th>Channel</th>
-                            <th>Total</th>
+                            <th class="right">Total</th>
                         </tr>
                     </thead>
                     <tbody id="bookings-body">
-                        <tr>
-                            <td colspan="5" style="text-align:center; padding:20px; color:var(--text-muted);">
-                                No reservations found.
-                            </td>
-                        </tr>
+                        <tr><td colspan="5" class="loading-state">Loading bookings…</td></tr>
                     </tbody>
                 </table>
             </div>
-        </div>
+        </section>
+
+        <section class="section-card" aria-labelledby="sync-title">
+            <div class="card-head">
+                <div>
+                    <h2 id="sync-title">Channel sync log</h2>
+                    <p>Updates pushed to each OTA after a booking</p>
+                </div>
+                <span class="live" data-live><span class="live-dot"></span><span class="live-text">Live</span></span>
+            </div>
+            <div class="table-scroll scroll-y">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>Channel</th>
+                            <th>Booking ref</th>
+                            <th>HTTP status</th>
+                            <th class="right">Latency</th>
+                            <th>Time</th>
+                        </tr>
+                    </thead>
+                    <tbody id="sync-logs-body">
+                        <tr><td colspan="5" class="loading-state">Loading sync log…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
     </div>
+
+    <!-- ============ Users ============ -->
+    <div class="grid-users">
+        <section class="section-card" aria-labelledby="account-title">
+            <h2 id="account-title" class="sr-only">Account</h2>
+
+            <!-- Shown when someone is signed in -->
+            <div class="user-panel hidden" id="user-panel">
+                <div class="avatar" id="user-panel-initial"></div>
+                <div class="who">
+                    <strong id="user-panel-name"></strong>
+                    <span id="user-panel-meta"></span>
+                </div>
+                <button type="button" class="btn-outline btn-sm" id="logout-btn">Sign out</button>
+            </div>
+
+            <div class="tabs" role="tablist">
+                <button type="button" role="tab" id="tab-create" aria-selected="true" aria-controls="create-user-form">Create user</button>
+                <button type="button" role="tab" id="tab-login" aria-selected="false" aria-controls="login-form">Sign in</button>
+            </div>
+
+            <form id="create-user-form" class="form-stack" role="tabpanel" aria-labelledby="tab-create" novalidate>
+                <div class="field">
+                    <label for="user-name">Full name</label>
+                    <input id="user-name" type="text" placeholder="Aarav Patel" autocomplete="name" required>
+                </div>
+                <div class="field">
+                    <label for="user-email">Email</label>
+                    <input id="user-email" type="email" placeholder="aarav@example.com" autocomplete="email" required>
+                </div>
+                <div class="field-row">
+                    <div class="field">
+                        <label for="user-password">Password</label>
+                        <input id="user-password" type="password" autocomplete="new-password" required>
+                    </div>
+                    <div class="field">
+                        <label for="user-phone">Phone (optional)</label>
+                        <input id="user-phone" type="tel" placeholder="+91 98765 43210" autocomplete="tel">
+                    </div>
+                </div>
+                <div class="field">
+                    <label for="user-role">Role</label>
+                    <select id="user-role">
+                        <option value="guest">Guest</option>
+                        <option value="staff">Staff</option>
+                        <option value="admin">Admin</option>
+                    </select>
+                </div>
+                <div class="form-error hidden" id="create-user-error" role="alert"></div>
+                <button type="submit" class="btn-primary">Create user</button>
+            </form>
+
+            <form id="login-form" class="form-stack hidden" role="tabpanel" aria-labelledby="tab-login" novalidate>
+                <div class="field">
+                    <label for="login-email">Email</label>
+                    <input id="login-email" type="email" autocomplete="email" required>
+                </div>
+                <div class="field">
+                    <label for="login-password">Password</label>
+                    <input id="login-password" type="password" autocomplete="current-password" required>
+                </div>
+                <div class="form-error hidden" id="login-error" role="alert"></div>
+                <button type="submit" class="btn-success">Sign in</button>
+            </form>
+        </section>
+
+        <section class="section-card" aria-labelledby="users-title">
+            <div class="card-head">
+                <div>
+                    <h2 id="users-title">Users</h2>
+                    <p>Guest, staff and admin accounts</p>
+                </div>
+                <button type="button" class="btn-ghost btn-sm" id="refresh-users">Refresh</button>
+            </div>
+            <div class="table-scroll scroll-y">
+                <table class="data-table">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Phone</th>
+                            <th>Role</th>
+                            <th>Status</th>
+                            <th>Joined</th>
+                            <th class="right">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="users-body">
+                        <tr><td colspan="7" class="loading-state">Loading users…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+    </div>
+
+    <!-- ============ C++ engine ============ -->
+    <section class="section-card" aria-labelledby="engine-title">
+        <div class="card-head">
+            <div>
+                <h2 id="engine-title">Algorithm engine</h2>
+                <p>Run the C++17 engine directly and inspect its results</p>
+            </div>
+        </div>
+        <div class="engine-buttons">
+            <button type="button" class="engine-btn" data-engine="benchmark">
+                <strong>Benchmark</strong><span>Throughput test</span>
+            </button>
+            <button type="button" class="engine-btn" data-engine="pricing">
+                <strong>Dynamic pricing</strong><span>Surge recommendations</span>
+            </button>
+            <button type="button" class="engine-btn" data-engine="dag-solve">
+                <strong>Solve DAG</strong><span>Sync task schedule</span>
+            </button>
+            <button type="button" class="engine-btn" data-engine="rate-parity">
+                <strong>Rate parity audit</strong><span>Find OTA undercuts</span>
+            </button>
+            <button type="button" class="engine-btn" data-engine="allocate">
+                <strong>Allocate channels</strong><span>Best quota per OTA</span>
+            </button>
+        </div>
+        <div class="engine-output" id="engine-output" aria-live="polite"></div>
+    </section>
+
+    <p class="footer">Omni Booking Channel Manager, built with PHP 8.3, MySQL and C++17</p>
 </div>
+
+<!-- Modal root (user bookings, edit user, database details) -->
+<div id="modal-root"></div>
+
+<!-- Toasts -->
+<div class="toast-stack" id="toast-stack" aria-live="polite"></div>
 
 <script src="/js/app.js"></script>
 </body>
